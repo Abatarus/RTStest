@@ -1,28 +1,97 @@
-use std::fs;
+use std::time::{Duration, Instant};
 
-use rtstest::{
-    render_queue_to_framebuffer, OpenGlRenderQueue, PlaceholderTexture, Tile, TileMap, TilePos,
-};
+use rtstest::{build_demo_render_queue, PlaceholderTexture};
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+use sdl2::pixels::Color;
+use sdl2::rect::Rect;
+
+const WINDOW_WIDTH: u32 = 960;
+const WINDOW_HEIGHT: u32 = 720;
+const WORLD_WIDTH: f32 = 12.0;
+const WORLD_HEIGHT: f32 = 12.0;
 
 fn main() {
-    let mut map = TileMap::new(12, 12);
-    map.set(TilePos { x: 3, y: 3 }, Tile::GoldMine);
-    map.set(TilePos { x: 5, y: 4 }, Tile::Forest);
+    let sdl_context = sdl2::init().expect("failed to init SDL2");
+    let video = sdl_context
+        .video()
+        .expect("failed to init SDL2 video subsystem");
 
-    let mut render_queue = OpenGlRenderQueue::default();
-    render_queue.queue_placeholder_quad(PlaceholderTexture::GoldMine, 3.0, 3.0, 3.0);
-    render_queue.queue_placeholder_quad(PlaceholderTexture::Forest, 7.0, 4.0, 2.0);
-    render_queue.queue_placeholder_quad(PlaceholderTexture::Worker, 1.0, 1.0, 1.0);
+    let window = video
+        .window("RTStest realtime SDL render", WINDOW_WIDTH, WINDOW_HEIGHT)
+        .position_centered()
+        .opengl()
+        .build()
+        .expect("failed to create SDL window");
 
-    let frame = render_queue_to_framebuffer(&render_queue, 12, 12);
-    let ppm = frame.to_ppm();
-    let output_path = "target/render_preview.ppm";
-    fs::create_dir_all("target").expect("failed to create target dir for render output");
-    fs::write(output_path, ppm).expect("failed to write render preview ppm");
+    let mut canvas = window
+        .into_canvas()
+        .present_vsync()
+        .build()
+        .expect("failed to create SDL canvas");
 
-    println!(
-        "MVP render: {} OpenGL placeholder квадрата(ов) отрисовано в {}.",
-        render_queue.quads.len(),
-        output_path
-    );
+    let mut event_pump = sdl_context
+        .event_pump()
+        .expect("failed to create SDL event pump");
+
+    let start = Instant::now();
+    'running: loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => break 'running,
+                _ => {}
+            }
+        }
+
+        let time_s = start.elapsed().as_secs_f32();
+        let queue = build_demo_render_queue(time_s);
+
+        canvas.set_draw_color(Color::RGB(16, 18, 24));
+        canvas.clear();
+
+        for quad in &queue.quads {
+            let tex = if quad.color == PlaceholderTexture::Worker.color() {
+                PlaceholderTexture::Worker
+            } else if quad.color == PlaceholderTexture::Barracks.color() {
+                PlaceholderTexture::Barracks
+            } else if quad.color == PlaceholderTexture::GoldMine.color() {
+                PlaceholderTexture::GoldMine
+            } else {
+                PlaceholderTexture::Forest
+            };
+
+            let color = to_sdl_color(tex);
+            canvas.set_draw_color(color);
+
+            let (x, y, w, h) = world_quad_to_screen(quad.x, quad.y, quad.size, quad.size);
+            let rect = Rect::new(x, y, w, h);
+            canvas
+                .fill_rect(rect)
+                .expect("failed to draw placeholder quad");
+        }
+
+        canvas.present();
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+fn to_sdl_color(texture: PlaceholderTexture) -> Color {
+    let c = texture.color();
+    Color::RGB(
+        (c.0.clamp(0.0, 1.0) * 255.0).round() as u8,
+        (c.1.clamp(0.0, 1.0) * 255.0).round() as u8,
+        (c.2.clamp(0.0, 1.0) * 255.0).round() as u8,
+    )
+}
+
+fn world_quad_to_screen(x: f32, y: f32, w: f32, h: f32) -> (i32, i32, u32, u32) {
+    let sx = (x / WORLD_WIDTH * WINDOW_WIDTH as f32).round() as i32;
+    let sy = (y / WORLD_HEIGHT * WINDOW_HEIGHT as f32).round() as i32;
+    let sw = (w / WORLD_WIDTH * WINDOW_WIDTH as f32).max(1.0).round() as u32;
+    let sh = (h / WORLD_HEIGHT * WINDOW_HEIGHT as f32).max(1.0).round() as u32;
+    (sx, sy, sw, sh)
 }
