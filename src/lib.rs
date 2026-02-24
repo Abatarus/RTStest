@@ -194,6 +194,18 @@ pub fn render_queue_to_framebuffer(
     frame
 }
 
+pub fn build_demo_render_queue(time_s: f32) -> OpenGlRenderQueue {
+    let mut render_queue = OpenGlRenderQueue::default();
+    render_queue.queue_placeholder_quad(PlaceholderTexture::GoldMine, 3.0, 3.0, 3.0);
+    render_queue.queue_placeholder_quad(PlaceholderTexture::Forest, 7.0, 4.0, 2.0);
+
+    let worker_x = 1.0 + (time_s * 2.0).sin() * 0.75 + 1.0;
+    let worker_y = 1.0 + (time_s * 1.5).cos() * 0.5 + 1.0;
+    render_queue.queue_placeholder_quad(PlaceholderTexture::Worker, worker_x, worker_y, 1.0);
+
+    render_queue
+}
+
 fn color_to_rgb(color: Color) -> Rgb {
     let Color(r, g, b) = color;
     Rgb(
@@ -291,6 +303,25 @@ mod tests {
         assert_eq!(frame.get_pixel(0, 0), Rgb(0, 0, 0));
         assert_eq!(frame.get_pixel(1, 1), Rgb(255, 217, 26));
         assert_eq!(frame.get_pixel(2, 2), Rgb(255, 217, 26));
+    }
+
+    #[test]
+    fn demo_render_queue_contains_expected_static_objects() {
+        let queue = build_demo_render_queue(0.0);
+
+        assert_eq!(queue.quads.len(), 3);
+        assert_eq!(queue.quads[0].color, PlaceholderTexture::GoldMine.color());
+        assert_eq!(queue.quads[1].color, PlaceholderTexture::Forest.color());
+        assert_eq!(queue.quads[2].color, PlaceholderTexture::Worker.color());
+    }
+
+    #[test]
+    fn demo_render_queue_animates_worker_position_over_time() {
+        let first = build_demo_render_queue(0.0);
+        let later = build_demo_render_queue(1.0);
+
+        assert_ne!(first.quads[2].x, later.quads[2].x);
+        assert_ne!(first.quads[2].y, later.quads[2].y);
     }
 
     #[test]
