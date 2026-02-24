@@ -168,6 +168,13 @@ impl FrameBuffer {
         }
         out
     }
+
+    pub fn to_argb_u32_buffer(&self) -> Vec<u32> {
+        self.pixels
+            .iter()
+            .map(|Rgb(r, g, b)| ((*r as u32) << 16) | ((*g as u32) << 8) | (*b as u32))
+            .collect()
+    }
 }
 
 pub fn render_queue_to_framebuffer(
@@ -303,5 +310,16 @@ mod tests {
         assert!(ppm.starts_with("P3\n2 1\n255\n"));
         assert!(ppm.contains("255 0 0"));
         assert!(ppm.contains("0 255 0"));
+    }
+
+    #[test]
+    fn framebuffer_converts_to_argb_u32_buffer() {
+        let mut frame = FrameBuffer::new(2, 1);
+        frame.set_pixel(0, 0, Rgb(255, 0, 0));
+        frame.set_pixel(1, 0, Rgb(0, 255, 0));
+
+        let argb = frame.to_argb_u32_buffer();
+
+        assert_eq!(argb, vec![0x00FF0000, 0x0000FF00]);
     }
 }
